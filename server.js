@@ -461,6 +461,21 @@ app.post('/nfe/emitir', authenticateToken, async (req, res) => {
         error: 'Dados obrigatórios: chave, ambiente, empresa, cliente, itens, valorTotal'
       });
     }
+
+    // VALIDAR CERTIFICADO OBRIGATÓRIO
+    if (!empresa.certificado || !empresa.senhacertificado) {
+      console.error('❌ CERTIFICADO DIGITAL OBRIGATÓRIO NÃO ENCONTRADO');
+      return res.status(400).json({
+        success: false,
+        codigo: '999',
+        mensagem: 'Certificado digital é obrigatório para emissão de NFe',
+        error: 'Certificado ou senha não configurados na empresa',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log('✅ Certificado digital encontrado na empresa');
+    console.log(`📏 Tamanho do certificado: ${empresa.certificado.length} caracteres`);
     
     // Preparar dados para NFe
     const dadosNfe = {
@@ -476,6 +491,27 @@ app.post('/nfe/emitir', authenticateToken, async (req, res) => {
     // Gerar XML NFe
     console.log('📝 Gerando XML NFe...');
     const xmlNfe = gerarXmlNfe(dadosNfe, chave);
+    
+    // VERIFICAR SE XML PRECISA DE ASSINATURA
+    if (!xmlNfe.includes('<Signature')) {
+      console.log('⚠️ XML não possui assinatura digital - SEFAZ irá rejeitar');
+      console.log('🔐 Para NFe real, o XML deve estar assinado digitalmente');
+      
+      // Em homologação, podemos tentar enviar sem assinatura para ver o erro específico
+      if (ambiente === 'homologacao') {
+        console.log('🧪 Tentando enviar XML sem assinatura em homologação para diagnóstico...');
+      } else {
+        return res.status(400).json({
+          success: false,
+          codigo: '999',
+          mensagem: 'XML deve estar assinado digitalmente para emissão em produção',
+          error: 'Assinatura digital obrigatória',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else {
+      console.log('✅ XML possui assinatura digital');
+    }
     
     // Enviar para SEFAZ
     console.log('📡 Enviando para SEFAZ...');
@@ -495,7 +531,9 @@ app.post('/nfe/emitir', authenticateToken, async (req, res) => {
       chave: chave,
       ambiente: dadosNfe.ambiente,
       timestamp: new Date().toISOString(),
-      gateway: 'proprio'
+      gateway: 'proprio',
+      xmlAssinado: xmlNfe.includes('<Signature'),
+      certificadoPresente: !!empresa.certificado
     };
     
     console.log('✅ Emissão concluída:', response);
