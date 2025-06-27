@@ -284,16 +284,15 @@ function gerarXmlNfe(dadosNfe, chaveNfe) {
 // ========== COMUNICAÇÃO COM SEFAZ ==========
 
 async function enviarParaSefaz(xmlNfe, ambiente, certificadoBase64, senhaCertificado) {
-  console.log('🚀 ENVIANDO PARA SEFAZ VIA GATEWAY PRÓPRIO');
+  console.log('🚀 ENVIANDO PARA SEFAZ VIA GATEWAY PRÓPRIO - COMUNICAÇÃO REAL');
+  console.log(`🔐 Certificado disponível: ${certificadoBase64 ? 'SIM' : 'NÃO'}`);
+  console.log(`🔑 Senha disponível: ${senhaCertificado ? 'SIM' : 'NÃO'}`);
+  console.log(`🌐 Ambiente: ${ambiente}`);
   
   try {
-    // Se for homologação e não tiver certificado válido, simular resposta
-    if (ambiente === 'homologacao' && (!certificadoBase64 || !senhaCertificado)) {
-      console.log('⚠️ MODO SIMULAÇÃO: Sem certificado em homologação');
-      return simularRespostaSefaz();
-    }
-    
     const urls = SEFAZ_URLS[ambiente] || SEFAZ_URLS.homologacao;
+    
+    console.log(`📡 URL SEFAZ: ${urls.autorizacao}`);
     
     // Preparar SOAP envelope
     const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
@@ -306,7 +305,8 @@ async function enviarParaSefaz(xmlNfe, ambiente, certificadoBase64, senhaCertifi
   </soap:Body>
 </soap:Envelope>`;
 
-    console.log('📡 Fazendo requisição para SEFAZ...');
+    console.log('📡 Fazendo requisição REAL para SEFAZ...');
+    console.log(`🌐 URL: ${urls.autorizacao}`);
     
     // Fazer requisição HTTPS para SEFAZ
     const response = await axios.post(urls.autorizacao, soapEnvelope, {
@@ -319,64 +319,33 @@ async function enviarParaSefaz(xmlNfe, ambiente, certificadoBase64, senhaCertifi
       httpsAgent: httpsAgent // Usar agente HTTPS configurado
     });
 
-    console.log('✅ RESPOSTA RECEBIDA DA SEFAZ');
+    console.log('✅ RESPOSTA REAL RECEBIDA DA SEFAZ');
+    console.log(`📊 Status HTTP: ${response.status}`);
+    console.log(`📄 Tamanho da resposta: ${response.data.length} caracteres`);
     
     // Processar resposta XML
     return processarRespostaSefaz(response.data);
     
   } catch (error) {
-    console.error('❌ ERRO NA COMUNICAÇÃO COM SEFAZ:', error.message);
+    console.error('❌ ERRO NA COMUNICAÇÃO REAL COM SEFAZ:', error.message);
+    console.error('📋 Detalhes do erro:', {
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url
+    });
     
-    // Se erro 403 em homologação, simular resposta
-    if (ambiente === 'homologacao' && (error.response?.status === 403 || error.response?.status === 401)) {
-      console.log('⚠️ ERRO 403/401 EM HOMOLOGAÇÃO - SIMULANDO RESPOSTA');
-      return simularRespostaSefaz();
-    }
-    
-    // Retornar erro estruturado
+    // Retornar erro estruturado SEM simulação
     return {
       success: false,
       codigo: '999',
-      mensagem: `Erro de comunicação: ${error.message}`,
+      mensagem: `Erro de comunicação real: ${error.message}`,
       protocolo: null,
-      xmlResposta: error.response?.data || null
+      xmlResposta: error.response?.data || null,
+      simulacao: false, // SEMPRE FALSE
+      comunicacaoReal: true
     };
   }
-}
-
-function simularRespostaSefaz() {
-  console.log('🎭 SIMULANDO RESPOSTA DA SEFAZ PARA HOMOLOGAÇÃO');
-  
-  const recibo = `REC${Math.floor(100000000000000 + Math.random() * 900000000000000)}`;
-  
-  const respostaSimulada = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
-  <soap:Body>
-    <nfeAutorizacaoLoteResponse>
-      <nfeAutorizacaoLoteResult>
-        <retEnviNFe versao="4.00">
-          <tpAmb>2</tpAmb>
-          <verAplic>SVRS202410141508</verAplic>
-          <cStat>103</cStat>
-          <xMotivo>Lote recebido com sucesso</xMotivo>
-          <cUF>53</cUF>
-          <dhRecbto>2024-12-27T18:00:00-03:00</dhRecbto>
-          <nRec>${recibo}</nRec>
-        </retEnviNFe>
-      </nfeAutorizacaoLoteResult>
-    </nfeAutorizacaoLoteResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-  return {
-    success: true,
-    codigo: '103',
-    mensagem: 'Lote recebido com sucesso',
-    protocolo: recibo,
-    xmlResposta: respostaSimulada,
-    simulacao: true,
-    timestamp: new Date().toISOString()
-  };
 }
 
 function processarRespostaSefaz(xmlResposta) {
