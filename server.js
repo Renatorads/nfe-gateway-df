@@ -7,6 +7,7 @@ const xml2js = require('xml2js');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const https = require('https');
 require('dotenv').config();
 
 const app = express();
@@ -15,6 +16,18 @@ const PORT = process.env.PORT || 3001;
 // ========== CONFIGURAÇÕES ==========
 const JWT_SECRET = process.env.JWT_SECRET || 'nfe-gateway-secret-key-2024';
 const API_TOKEN = process.env.API_TOKEN || 'nfe-gateway-token-default';
+
+// ========== CONFIGURAÇÕES SSL ==========
+// Configurar axios para ignorar certificados SSL em homologação
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false, // Ignorar certificados auto-assinados
+  keepAlive: true,
+  timeout: 30000
+});
+
+// Configurar axios globalmente
+axios.defaults.httpsAgent = httpsAgent;
+axios.defaults.timeout = 30000;
 
 // URLs oficiais da SEFAZ-DF via SVRS
 const SEFAZ_URLS = {
@@ -35,6 +48,12 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Log de requisições
+app.use((req, res, next) => {
+  console.log(`📡 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  next();
+});
 
 // Middleware de autenticação
 function authenticateToken(req, res, next) {
@@ -133,24 +152,24 @@ function gerarXmlNfe(dadosNfe, chaveNfe) {
         <verProc>1.0</verProc>
       </ide>
       <emit>
-        <CNPJ>${dadosNfe.empresa.cnpj.replace(/[^\d]/g, '')}</CNPJ>
-        <xNome>${dadosNfe.empresa.razaosocial}</xNome>
-        <xFant>${dadosNfe.empresa.nomefantasia}</xFant>
+        <CNPJ>${(dadosNfe.empresa.cnpj || '').replace(/[^\d]/g, '')}</CNPJ>
+        <xNome>${dadosNfe.empresa.razaosocial || 'EMPRESA TESTE'}</xNome>
+        <xFant>${dadosNfe.empresa.nomefantasia || 'EMPRESA TESTE'}</xFant>
         <enderEmit>
-          <xLgr>${dadosNfe.empresa.endereco}</xLgr>
-          <nro>${dadosNfe.empresa.numero}</nro>
+          <xLgr>${dadosNfe.empresa.endereco || 'RUA TESTE'}</xLgr>
+          <nro>${dadosNfe.empresa.numero || '123'}</nro>
           ${dadosNfe.empresa.complemento ? `<xCpl>${dadosNfe.empresa.complemento}</xCpl>` : ''}
-          <xBairro>${dadosNfe.empresa.bairro}</xBairro>
-          <cMun>${dadosNfe.empresa.codibge}</cMun>
-          <xMun>${dadosNfe.empresa.cidade}</xMun>
-          <UF>${dadosNfe.empresa.estado}</UF>
-          <CEP>${dadosNfe.empresa.cep.replace(/[^\d]/g, '')}</CEP>
+          <xBairro>${dadosNfe.empresa.bairro || 'CENTRO'}</xBairro>
+          <cMun>${dadosNfe.empresa.codibge || '5300108'}</cMun>
+          <xMun>${dadosNfe.empresa.cidade || 'BRASILIA'}</xMun>
+          <UF>${dadosNfe.empresa.estado || 'DF'}</UF>
+          <CEP>${(dadosNfe.empresa.cep || '70000000').replace(/[^\d]/g, '')}</CEP>
           <cPais>1058</cPais>
           <xPais>Brasil</xPais>
           ${dadosNfe.empresa.telefone ? `<fone>${dadosNfe.empresa.telefone.replace(/[^\d]/g, '')}</fone>` : ''}
         </enderEmit>
-        <IE>${dadosNfe.empresa.inscricaoestadual}</IE>
-        <CNAE>${dadosNfe.empresa.cnae}</CNAE>
+        <IE>${dadosNfe.empresa.inscricaoestadual || 'ISENTO'}</IE>
+        <CNAE>${dadosNfe.empresa.cnae || '4712100'}</CNAE>
         <CRT>${isSimples ? '1' : '3'}</CRT>
       </emit>
       <dest>
@@ -352,6 +371,27 @@ function processarRespostaSefaz(xmlResposta) {
 }
 
 // ========== ROTAS DA API ==========
+
+// Rota raiz - Informações do Gateway
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    service: 'NFe Gateway DF',
+    version: '1.0.0',
+    description: 'Gateway para emissão de NFe no Distrito Federal',
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    endpoints: {
+      health: 'GET /health',
+      status: 'GET /status (requer auth)',
+      emitir: 'POST /nfe/emitir (requer auth)',
+      consultar: 'POST /nfe/consultar (requer auth)',
+      token: 'POST /auth/token'
+    },
+    documentation: 'https://github.com/seu-usuario/nfe-gateway'
+  });
+});
 
 // Health check
 app.get('/health', (req, res) => {
