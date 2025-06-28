@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const https = require('https');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -48,6 +49,7 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.text({ type: 'application/xml', limit: '10mb' }));
 
 // Log de requisições
 app.use((req, res, next) => {
